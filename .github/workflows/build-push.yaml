@@ -11,9 +11,26 @@ env:
   ACR_NAME: acrtogglemasterprod
   IMAGE_NAME: evaluation-service
   GITOPS_REPO: freitasleoalves/fiap-tc-3-gitops
-  GITOPS_APP_PATH: apps/evaluation
+  GITOPS_APP_PATH: apps/evaluation/overlays/prod
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
@@ -38,7 +55,7 @@ jobs:
   sonarqube:
     name: SonarQube Scan
     runs-on: ubuntu-latest
-    needs: test
+    needs: [lint, test]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -65,7 +82,7 @@ jobs:
   build-scan-push:
     name: Build, Trivy Scan and Push
     runs-on: ubuntu-latest
-    needs: test
+    needs: [lint, test]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -84,7 +101,7 @@ jobs:
           severity: "CRITICAL"
 
       - name: Login to ACR
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: azure/docker-login@v2
         with:
           login-server: ${{ env.ACR_NAME }}.azurecr.io
@@ -92,7 +109,7 @@ jobs:
           password: ${{ secrets.ACR_PASSWORD }}
 
       - name: Push to ACR
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
           docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
           docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
@@ -101,7 +118,7 @@ jobs:
     name: Update GitOps
     runs-on: ubuntu-latest
     needs: build-scan-push
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     steps:
       - name: Checkout GitOps repo
         uses: actions/checkout@v4
