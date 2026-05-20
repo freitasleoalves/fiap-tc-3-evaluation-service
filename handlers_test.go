@@ -19,7 +19,9 @@ func TestHealthHandler_Evaluation(t *testing.T) {
 	}
 
 	var body map[string]string
-	json.NewDecoder(w.Body).Decode(&body)
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("falha ao decodificar resposta: %v", err)
+	}
 	if body["status"] != "ok" {
 		t.Errorf("esperado status 'ok', got '%s'", body["status"])
 	}
