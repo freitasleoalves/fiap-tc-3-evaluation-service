@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -24,7 +25,7 @@ type SQSSender struct {
 	QueueURL string
 }
 
-func (s *SQSSender) SendEvent(userID, flagName string, result bool) error {
+func (s *SQSSender) SendEvent(ctx context.Context, userID, flagName string, result bool) error {
 	event := EvaluationEvent{
 		UserID:    userID,
 		FlagName:  flagName,
@@ -37,9 +38,20 @@ func (s *SQSSender) SendEvent(userID, flagName string, result bool) error {
 		return fmt.Errorf("erro ao serializar evento SQS: %w", err)
 	}
 
+	// Propaga o traceparent/tracestate como Message Attributes, para o
+	// analytics-service reconstruir o mesmo trace distribuído ao consumir.
+	msgAttrs := make(map[string]*sqs.MessageAttributeValue)
+	for k, v := range injectTraceContext(ctx) {
+		msgAttrs[k] = &sqs.MessageAttributeValue{
+			DataType:    aws.String("String"),
+			StringValue: aws.String(v),
+		}
+	}
+
 	_, err = s.SqsSvc.SendMessage(&sqs.SendMessageInput{
-		MessageBody: aws.String(string(body)),
-		QueueUrl:    aws.String(s.QueueURL),
+		MessageBody:       aws.String(string(body)),
+		QueueUrl:          aws.String(s.QueueURL),
+		MessageAttributes: msgAttrs,
 	})
 
 	if err != nil {

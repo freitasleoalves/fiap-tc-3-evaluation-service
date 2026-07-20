@@ -24,7 +24,7 @@ func NewServiceBusSender(connectionString, queueName string) (*ServiceBusSender,
 	return &ServiceBusSender{client: client, queueName: queueName}, nil
 }
 
-func (s *ServiceBusSender) SendEvent(userID, flagName string, result bool) error {
+func (s *ServiceBusSender) SendEvent(ctx context.Context, userID, flagName string, result bool) error {
 	event := EvaluationEvent{
 		UserID:    userID,
 		FlagName:  flagName,
@@ -43,8 +43,17 @@ func (s *ServiceBusSender) SendEvent(userID, flagName string, result bool) error
 	}
 	defer sender.Close(context.Background())
 
+	// Propaga o traceparent/tracestate como propriedades da mensagem, para
+	// que o analytics-service reconstrua o mesmo trace distribuído ao
+	// consumir a mensagem (Distributed Tracing via mensageria assíncrona).
+	appProps := make(map[string]interface{})
+	for k, v := range injectTraceContext(ctx) {
+		appProps[k] = v
+	}
+
 	err = sender.SendMessage(context.Background(), &azservicebus.Message{
-		Body: body,
+		Body:                 body,
+		ApplicationProperties: appProps,
 	}, nil)
 	if err != nil {
 		return fmt.Errorf("erro ao enviar mensagem para Service Bus: %w", err)

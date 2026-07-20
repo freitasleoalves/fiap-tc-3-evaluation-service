@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 type EvaluationResponse struct {
@@ -47,9 +50,14 @@ func (a *App) evaluationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Enviar evento para a fila (assincronamente)
+	// O SpanContext da requisição é preservado em um novo context.Background()
+	// (desvinculado do ciclo de vida da requisição HTTP, que é cancelado
+	// assim que o handler retorna) para que o span de envio da mensagem
+	// continue fazendo parte do mesmo trace distribuído no APM.
+	msgCtx := trace.ContextWithSpanContext(context.Background(), trace.SpanContextFromContext(r.Context()))
 	go func() {
 		if a.MsgSender != nil {
-			if err := a.MsgSender.SendEvent(userID, flagName, result); err != nil {
+			if err := a.MsgSender.SendEvent(msgCtx, userID, flagName, result); err != nil {
 				log.Printf("Erro ao enviar evento: %v", err)
 			}
 		} else {

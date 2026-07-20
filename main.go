@@ -17,6 +17,8 @@ import (
 // Contexto global para o Redis
 var ctx = context.Background()
 
+const serviceName = "evaluation-service"
+
 // App struct para injeção de dependência
 type App struct {
 	RedisClient         *redis.Client
@@ -28,6 +30,17 @@ type App struct {
 
 func main() {
 	_ = godotenv.Load() // Carrega .env para dev local
+
+	// --- OpenTelemetry (traces + métricas via OTel Collector) ---
+	shutdownOTel, err := initOTel(ctx, serviceName)
+	if err != nil {
+		log.Fatalf("Não foi possível inicializar o OpenTelemetry: %v", err)
+	}
+	defer func() {
+		if err := shutdownOTel(ctx); err != nil {
+			log.Printf("Erro ao encerrar o OpenTelemetry: %v", err)
+		}
+	}()
 
 	// --- Configuração ---
 	port := os.Getenv("PORT")
@@ -104,10 +117,9 @@ func main() {
 		}
 	}
 
-	// Cliente HTTP (com timeout)
-	httpClient := &http.Client{
-		Timeout: 5 * time.Second,
-	}
+	// Cliente HTTP (com timeout), instrumentado para propagar o contexto de
+	// trace nas chamadas para flag-service e targeting-service.
+	httpClient := instrumentedHTTPClient(5 * time.Second)
 
 	// Cria a instância da App
 	app := &App{
@@ -124,7 +136,7 @@ func main() {
 	mux.HandleFunc("/evaluate", app.evaluationHandler)
 
 	log.Printf("Serviço de Avaliação (Go) rodando na porta %s", port)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	if err := http.ListenAndServe(":"+port, instrumentHandler(serviceName, mux)); err != nil {
 		log.Fatal(err)
 	}
 }
