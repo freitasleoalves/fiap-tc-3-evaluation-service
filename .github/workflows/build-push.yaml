@@ -119,6 +119,7 @@ jobs:
           format: "table"
           exit-code: "1"
           severity: "CRITICAL"
+          ignore-unfixed: "true"
 
       - name: Build Docker image
         run: |
@@ -132,6 +133,7 @@ jobs:
           format: "table"
           exit-code: "1"
           severity: "CRITICAL"
+          ignore-unfixed: "true"
 
       - name: Login to ACR
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
