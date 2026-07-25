@@ -41,7 +41,11 @@ func (s *ServiceBusSender) SendEvent(ctx context.Context, userID, flagName strin
 	if err != nil {
 		return fmt.Errorf("erro ao criar sender: %w", err)
 	}
-	defer sender.Close(context.Background())
+	defer func() {
+		if err := sender.Close(context.Background()); err != nil {
+			log.Printf("Erro ao fechar sender do Service Bus: %v", err)
+		}
+	}()
 
 	// Propaga o traceparent/tracestate como propriedades da mensagem, para
 	// que o analytics-service reconstrua o mesmo trace distribuído ao
